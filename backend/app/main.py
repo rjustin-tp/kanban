@@ -8,6 +8,12 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.ai_service import (
+    OpenRouterClient,
+    OpenRouterConfigError,
+    OpenRouterRequestError,
+    OpenRouterTimeoutError,
+)
 from app.board_repository import BoardRepository
 
 app = FastAPI(title="Project Management MVP Backend")
@@ -29,6 +35,7 @@ def _resolve_db_path() -> Path:
 
 board_repo = BoardRepository(_resolve_db_path())
 board_repo.initialize()
+ai_client = OpenRouterClient()
 
 
 class LoginRequest(BaseModel):
@@ -115,6 +122,22 @@ def put_board(request: Request, payload: BoardPayload) -> dict[str, Any]:
         return board_repo.replace_board_data(username, payload.model_dump())
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/api/ai/smoke")
+def get_ai_smoke(request: Request) -> dict[str, str]:
+    require_authenticated_user(request)
+    prompt = "2+2"
+    try:
+        response_text = ai_client.prompt_text(prompt)
+    except OpenRouterConfigError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    except OpenRouterTimeoutError as error:
+        raise HTTPException(status_code=504, detail=str(error)) from error
+    except OpenRouterRequestError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+    return {"prompt": prompt, "response": response_text}
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")

@@ -15,6 +15,13 @@ Fixed decisions for this project:
 - AI model: OpenRouter `openai/gpt-oss-120b` only (no fallback).
 - Structured Outputs schema: propose and get sign-off before implementation.
 
+Implemented decisions through Part 8:
+- Backend persists board data in SQLite via `backend/app/board_repository.py`; schema is initialized in code (migration files are proposed in `docs/DATA_MODEL.md` but not yet implemented).
+- Frontend board state is API-backed (`GET /api/board`, `PUT /api/board`) with inline loading/save error messaging.
+- Current start/stop scripts recreate containers; persistence is guaranteed for a stable DB file path, but not across container recreation without a Docker volume mount.
+- Playwright e2e runs against Next dev server and mocks backend auth/board routes for deterministic frontend flow testing.
+- AI smoke route is `GET /api/ai/smoke` (authenticated), sends prompt `2+2`, and maps OpenRouter failures to explicit HTTP statuses (`500` missing key, `502` upstream error, `504` timeout).
+
 ---
 
 ## Part 1: Plan + Frontend Documentation
@@ -158,26 +165,26 @@ Fixed decisions for this project:
 - [x] User interactions modify persisted board, not local-only memory.
 - [x] Reload shows latest saved board state.
 - [x] No regression in core board UX.
-- [ ] User approval received before Part 8.
+- [x] User approval received before Part 8.
 
 ---
 
 ## Part 8: AI Connectivity (OpenRouter Smoke)
 
 ### Deliverables checklist
-- [ ] Add backend OpenRouter client integration using `OPENROUTER_API_KEY`.
-- [ ] Add internal service method to send a simple prompt and return text response.
-- [ ] Add a backend test route or test utility for controlled connectivity verification.
-- [ ] Implement the required smoke test prompt: `2+2`.
+- [x] Add backend OpenRouter client integration using `OPENROUTER_API_KEY`.
+- [x] Add internal service method to send a simple prompt and return text response.
+- [x] Add a backend test route or test utility for controlled connectivity verification.
+- [x] Implement the required smoke test prompt: `2+2`.
 
 ### Tests
-- [ ] Unit tests for request construction and response parsing (mocked HTTP).
-- [ ] Connectivity smoke test (manual or integration-guarded) verifies successful AI call.
-- [ ] Error handling tests for missing key / non-200 responses / timeout behavior.
+- [x] Unit tests for request construction and response parsing (mocked HTTP).
+- [x] Connectivity smoke test (manual or integration-guarded) verifies successful AI call.
+- [x] Error handling tests for missing key / non-200 responses / timeout behavior.
 
 ### Success criteria
-- [ ] Backend can successfully call OpenRouter and parse response content.
-- [ ] `2+2` test proves round-trip connectivity in local environment.
+- [x] Backend can successfully call OpenRouter and parse response content.
+- [x] `2+2` test proves round-trip connectivity in local environment.
 - [ ] User approval received before Part 9.
 
 ---
