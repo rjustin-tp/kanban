@@ -1,0 +1,9 @@
+.git
+.gitignore
+.cursor
+**/__pycache__
+**/.pytest_cache
+**/.DS_Store
+frontend/node_modules
+frontend/.next
+frontend/test-results

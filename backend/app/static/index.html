@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project Management MVP</title>
+    <style>
+      :root {
+        --accent-yellow: #ecad0a;
+        --primary-blue: #209dd7;
+        --secondary-purple: #753991;
+        --navy-dark: #032147;
+        --gray-text: #888888;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--navy-dark);
+        background: #f8f9fc;
+      }
+
+      main {
+        max-width: 840px;
+        margin: 48px auto;
+        padding: 0 20px;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+      }
+
+      p {
+        color: var(--gray-text);
+      }
+
+      .panel {
+        margin-top: 24px;
+        padding: 16px;
+        border: 1px solid rgba(3, 33, 71, 0.1);
+        border-radius: 12px;
+        background: white;
+      }
+
+      .key {
+        color: var(--secondary-purple);
+        font-weight: 600;
+      }
+
+      .ok {
+        color: #1f7a3f;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Hello world from the backend scaffold</h1>
+      <p>
+        This page is served by FastAPI at <span class="key">/</span>. It runs a
+        live API call to <span class="key">/api/health</span> below.
+      </p>
+
+      <section class="panel">
+        <div>Health check result:</div>
+        <pre id="health-output">Loading...</pre>
+      </section>
+    </main>
+
+    <script>
+      const outputNode = document.getElementById("health-output");
+
+      async function loadHealth() {
+        try {
+          const response = await fetch("/api/health");
+          const data = await response.json();
+          outputNode.textContent = JSON.stringify(data, null, 2);
+          outputNode.classList.add("ok");
+        } catch (error) {
+          outputNode.textContent = `Request failed: ${error}`;
+        }
+      }
+
+      loadHealth();
+    </script>
+  </body>
+</html>
