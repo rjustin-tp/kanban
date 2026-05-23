@@ -138,6 +138,40 @@ const setupAuthMocks = async (page: Page) => {
       body: JSON.stringify({ detail: "Method not allowed" }),
     });
   });
+
+  await page.route("**/api/ai/chat", async (route) => {
+    if (!authenticated) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Not authenticated" }),
+      });
+      return;
+    }
+
+    const payload = route.request().postDataJSON() as {
+      message?: string;
+    };
+    const nextTitle = payload.message?.toLowerCase().includes("rename")
+      ? "AI Backlog"
+      : "Backlog";
+    boardState = {
+      ...boardState,
+      columns: boardState.columns.map((column) =>
+        column.id === "col-backlog" ? { ...column, title: nextTitle } : column
+      ),
+    };
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        assistantMessage: "Updated your board.",
+        appliedOperations: true,
+        board: boardState,
+      }),
+    });
+  });
 };
 
 const login = async (page: Page) => {
@@ -219,5 +253,18 @@ test("keeps renamed column after reload", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
   await expect(page.getByTestId("column-col-backlog").getByLabel("Column title")).toHaveValue(
     "Queue"
+  );
+});
+
+test("updates board from ai sidebar chat", async ({ page }) => {
+  await setupAuthMocks(page);
+  await login(page);
+
+  await page.getByPlaceholder("Ask AI to update your board").fill("Rename backlog");
+  await page.getByRole("button", { name: /send/i }).click();
+
+  await expect(page.getByText("Updated your board.")).toBeVisible();
+  await expect(page.getByTestId("column-col-backlog").getByLabel("Column title")).toHaveValue(
+    "AI Backlog"
   );
 });

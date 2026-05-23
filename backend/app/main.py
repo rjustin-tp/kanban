@@ -6,13 +6,19 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.ai_service import (
     OpenRouterClient,
     OpenRouterConfigError,
     OpenRouterRequestError,
     OpenRouterTimeoutError,
+)
+from app.ai_chat import (
+    ChatRequest,
+    StructuredAIResponse,
+    apply_operations_to_board,
+    normalize_structured_response,
 )
 from app.board_repository import BoardRepository
 
@@ -23,7 +29,10 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "data" / "kanban.db"
 SESSION_COOKIE_NAME = "pm_session"
 VALID_USERNAME = "user"
 VALID_PASSWORD = "password"
+CHAT_HISTORY_LIMIT = 12
+AI_PARSE_ATTEMPTS = 4
 sessions: dict[str, str] = {}
+chat_histories: dict[str, list[dict[str, str]]] = {}
 
 
 def _resolve_db_path() -> Path:
@@ -31,6 +40,35 @@ def _resolve_db_path() -> Path:
     if configured_path:
         return Path(configured_path)
     return DEFAULT_DB_PATH
+
+
+def _is_summary_request(message: str) -> bool:
+    normalized = message.lower()
+    return any(keyword in normalized for keyword in ("summarize", "summary", "recap"))
+
+
+def _build_board_summary(board: dict[str, Any]) -> str:
+    columns = board.get("columns", [])
+    cards = board.get("cards", {})
+
+    lines = ["Here is your full board summary:"]
+    total_cards = 0
+    for column in columns:
+        title = str(column.get("title", "Untitled"))
+        card_ids = [card_id for card_id in column.get("cardIds", []) if isinstance(card_id, str)]
+        card_titles = [
+            str(cards[card_id].get("title", card_id))
+            for card_id in card_ids
+            if isinstance(cards.get(card_id), Mapping)
+        ]
+        total_cards += len(card_titles)
+        if card_titles:
+            lines.append(f"- {title} ({len(card_titles)}): " + "; ".join(card_titles))
+        else:
+            lines.append(f"- {title} (0): No cards")
+
+    lines.append(f"Total cards: {total_cards}")
+    return "\n".join(lines)
 
 
 board_repo = BoardRepository(_resolve_db_path())
@@ -98,7 +136,9 @@ def login(payload: LoginRequest, response: Response) -> dict[str, Any]:
 def logout(request: Request, response: Response) -> dict[str, bool]:
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if session_id:
-        sessions.pop(session_id, None)
+        username = sessions.pop(session_id, None)
+        if username:
+            chat_histories.pop(username, None)
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
     return {"ok": True}
 
@@ -138,6 +178,82 @@ def get_ai_smoke(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
     return {"prompt": prompt, "response": response_text}
+
+
+@app.post("/api/ai/chat")
+def post_ai_chat(request: Request, payload: ChatRequest) -> dict[str, Any]:
+    username = require_authenticated_user(request)
+    board = board_repo.get_board_data(username)
+
+    if payload.conversation is not None:
+        conversation = [entry.model_dump() for entry in payload.conversation]
+    else:
+        conversation = chat_histories.get(username, [])
+
+    conversation = (
+        conversation + [{"role": "user", "content": payload.message}]
+    )[-CHAT_HISTORY_LIMIT:]
+
+    if _is_summary_request(payload.message):
+        summary_text = _build_board_summary(board)
+        chat_histories[username] = (
+            conversation + [{"role": "assistant", "content": summary_text}]
+        )[-CHAT_HISTORY_LIMIT:]
+        return {
+            "assistantMessage": summary_text,
+            "appliedOperations": False,
+            "board": board,
+        }
+
+    structured: StructuredAIResponse | None = None
+    updated_board: dict[str, Any] = board
+    applied_operations = False
+    attempts = 0
+    max_attempts = AI_PARSE_ATTEMPTS
+
+    try:
+        while attempts < max_attempts:
+            attempts += 1
+            ai_result = ai_client.prompt_structured_chat(board, payload.message, conversation)
+            try:
+                structured = StructuredAIResponse.model_validate(
+                    normalize_structured_response(ai_result, board)
+                )
+                updated_board, applied_operations = apply_operations_to_board(
+                    board, structured.operations
+                )
+                break
+            except (ValidationError, ValueError):
+                if attempts >= max_attempts:
+                    raise
+                continue
+    except OpenRouterConfigError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    except OpenRouterTimeoutError as error:
+        raise HTTPException(status_code=504, detail=str(error)) from error
+    except OpenRouterRequestError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    except (ValidationError, ValueError) as error:
+        raise HTTPException(status_code=502, detail="Invalid structured AI response.") from error
+
+    if structured is None:
+        raise HTTPException(status_code=502, detail="Invalid structured AI response.")
+
+    if applied_operations:
+        persisted_board = board_repo.replace_board_data(username, updated_board)
+    else:
+        persisted_board = board
+
+    chat_histories[username] = (
+        conversation
+        + [{"role": "assistant", "content": structured.assistantMessage}]
+    )[-CHAT_HISTORY_LIMIT:]
+
+    return {
+        "assistantMessage": structured.assistantMessage,
+        "appliedOperations": applied_operations,
+        "board": persisted_board,
+    }
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")

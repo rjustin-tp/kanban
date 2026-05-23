@@ -33,6 +33,16 @@ describe("KanbanBoard", () => {
           makeJsonResponse(200, JSON.parse((init?.body as string) ?? "{}"))
         );
       }
+      if (url === "/api/ai/chat" && method === "POST") {
+        const currentBoard = boardFromApi;
+        return Promise.resolve(
+          makeJsonResponse(200, {
+            assistantMessage: "No board changes needed.",
+            appliedOperations: false,
+            board: currentBoard,
+          })
+        );
+      }
       return Promise.resolve(makeJsonResponse(404, { detail: "Not found" }));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -136,5 +146,117 @@ describe("KanbanBoard", () => {
     expect(
       await screen.findByText(/could not save board changes/i)
     ).toBeInTheDocument();
+  });
+
+  it("sends chat message and renders assistant reply", async () => {
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+
+    const chatInput = screen.getByPlaceholderText(/ask ai to update your board/i);
+    await userEvent.type(chatInput, "What should I focus on next?");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(await screen.findByText("What should I focus on next?")).toBeInTheDocument();
+    expect(await screen.findByText("No board changes needed.")).toBeInTheDocument();
+
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => {
+        if (url !== "/api/ai/chat" || !init || init.method !== "POST") {
+          return false;
+        }
+        const payload = JSON.parse((init.body as string) ?? "{}");
+        return payload.message === "What should I focus on next?";
+      })
+    ).toBe(true);
+  });
+
+  it("applies board returned by ai chat response", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const boardFromApi = {
+        ...initialData,
+        columns: initialData.columns.map((column) =>
+          column.id === "col-backlog" ? { ...column, title: "Loaded Backlog" } : column
+        ),
+      };
+      if (url === "/api/board" && method === "GET") {
+        return Promise.resolve(makeJsonResponse(200, boardFromApi));
+      }
+      if (url === "/api/board" && method === "PUT") {
+        return Promise.resolve(
+          makeJsonResponse(200, JSON.parse((init?.body as string) ?? "{}"))
+        );
+      }
+      if (url === "/api/ai/chat" && method === "POST") {
+        const updatedBoard = {
+          ...boardFromApi,
+          columns: boardFromApi.columns.map((column) =>
+            column.id === "col-backlog" ? { ...column, title: "AI Backlog" } : column
+          ),
+        };
+        return Promise.resolve(
+          makeJsonResponse(200, {
+            assistantMessage: "Updated your backlog title.",
+            appliedOperations: true,
+            board: updatedBoard,
+          })
+        );
+      }
+      return Promise.resolve(makeJsonResponse(404, { detail: "Not found" }));
+    });
+
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/ask ai to update your board/i),
+      "Rename backlog"
+    );
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(await screen.findByDisplayValue("AI Backlog")).toBeInTheDocument();
+  });
+
+  it("shows error when ai chat request fails", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const boardFromApi = {
+        ...initialData,
+        columns: initialData.columns.map((column) =>
+          column.id === "col-backlog" ? { ...column, title: "Loaded Backlog" } : column
+        ),
+      };
+      if (url === "/api/board" && method === "GET") {
+        return Promise.resolve(makeJsonResponse(200, boardFromApi));
+      }
+      if (url === "/api/board" && method === "PUT") {
+        return Promise.resolve(makeJsonResponse(200, boardFromApi));
+      }
+      if (url === "/api/ai/chat" && method === "POST") {
+        return Promise.resolve(makeJsonResponse(502, { detail: "Invalid structured AI response." }));
+      }
+      return Promise.resolve(makeJsonResponse(404, { detail: "Not found" }));
+    });
+
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+
+    await userEvent.type(screen.getByPlaceholderText(/ask ai to update your board/i), "Do something");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(await screen.findByText(/ai request failed\. try again\./i)).toBeInTheDocument();
+  });
+
+  it("sends chat when pressing Enter in input", async () => {
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+
+    const chatInput = screen.getByPlaceholderText(/ask ai to update your board/i);
+    await userEvent.type(chatInput, "Move card{enter}");
+
+    expect(await screen.findByText("Move card")).toBeInTheDocument();
+    expect(await screen.findByText("No board changes needed.")).toBeInTheDocument();
   });
 });

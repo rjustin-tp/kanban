@@ -15,12 +15,16 @@ Fixed decisions for this project:
 - AI model: OpenRouter `openai/gpt-oss-120b` only (no fallback).
 - Structured Outputs schema: propose and get sign-off before implementation.
 
-Implemented decisions through Part 8:
+Implemented decisions through Part 10 + hardening:
 - Backend persists board data in SQLite via `backend/app/board_repository.py`; schema is initialized in code (migration files are proposed in `docs/DATA_MODEL.md` but not yet implemented).
 - Frontend board state is API-backed (`GET /api/board`, `PUT /api/board`) with inline loading/save error messaging.
+- Start scripts pass project `.env` into container runtime so OpenRouter key is available in Docker (`--env-file`).
 - Current start/stop scripts recreate containers; persistence is guaranteed for a stable DB file path, but not across container recreation without a Docker volume mount.
 - Playwright e2e runs against Next dev server and mocks backend auth/board routes for deterministic frontend flow testing.
 - AI smoke route is `GET /api/ai/smoke` (authenticated), sends prompt `2+2`, and maps OpenRouter failures to explicit HTTP statuses (`500` missing key, `502` upstream error, `504` timeout).
+- `POST /api/ai/chat` is implemented with strict validation plus normalization/retry hardening for real-world model output variants.
+- Summary prompts (`summarize` / `summary` / `recap`) use deterministic server-side board summary generation for complete responses.
+- Sidebar AI chat supports Enter-to-send (Shift+Enter keeps newline) and auto-applies returned board updates.
 
 ---
 
@@ -185,54 +189,173 @@ Implemented decisions through Part 8:
 ### Success criteria
 - [x] Backend can successfully call OpenRouter and parse response content.
 - [x] `2+2` test proves round-trip connectivity in local environment.
-- [ ] User approval received before Part 9.
+- [x] User approval received before Part 9.
 
 ---
 
 ## Part 9: Structured Outputs for Chat + Optional Board Update
 
+### Proposed contract (for approval before implementation)
+
+Decisions locked for MVP Part 9:
+- Single endpoint: `POST /api/ai/chat` (authenticated).
+- One response object containing:
+  - assistant reply text (always required),
+  - optional board operations (applied server-side, then persisted).
+- AI may modify only board columns/cards through explicit operations (no full-board replacement from AI).
+- Conversation history is in-memory per authenticated session.
+- History truncation is deterministic: include most recent `N` messages only (default `N=12`, configurable in code constant).
+
+#### Endpoint request contract (`POST /api/ai/chat`)
+
+```json
+{
+  "message": "Move onboarding card to In Progress",
+  "conversation": [
+    { "role": "user", "content": "Can you reorganize my board?" },
+    { "role": "assistant", "content": "Sure. What should change first?" }
+  ]
+}
+```
+
+Request validation rules:
+- `message`: required, trimmed, non-empty string, max length 2000.
+- `conversation`: optional array; if omitted, server uses stored in-memory history.
+- each conversation item:
+  - `role`: required enum `user | assistant` (no `system` from client),
+  - `content`: required, trimmed, non-empty string, max length 2000.
+- server enforces final history window size by keeping only last `N` messages after appending current user message.
+
+#### AI structured output schema (OpenRouter response format)
+
+Top-level object:
+```json
+{
+  "assistantMessage": "I moved the onboarding card to In Progress.",
+  "operations": [
+    {
+      "type": "move_card",
+      "cardId": "card-onboarding",
+      "toColumnId": "col-in-progress",
+      "toIndex": 0
+    }
+  ]
+}
+```
+
+Validation rules:
+- `assistantMessage`: required, non-empty string, max length 4000.
+- `operations`: optional array, default `[]`, max 50 operations per request.
+- unknown keys are rejected by schema parser.
+- invalid payload fails closed (no board mutation), returns `502` with a stable error detail.
+
+Operation union (`operations[]`):
+- `create_card`
+  - required: `type`, `columnId`, `title`
+  - optional: `details`, `cardId`, `index`
+  - rules: title non-empty; if `cardId` omitted server creates deterministic id.
+- `update_card`
+  - required: `type`, `cardId`
+  - optional (at least one required): `title`, `details`
+- `delete_card`
+  - required: `type`, `cardId`
+- `move_card`
+  - required: `type`, `cardId`, `toColumnId`, `toIndex`
+- `create_column`
+  - required: `type`, `title`
+  - optional: `columnId`, `index`
+- `update_column`
+  - required: `type`, `columnId`, `title`
+- `delete_column`
+  - required: `type`, `columnId`
+  - rules: deleting a column also deletes cards currently inside it (simple MVP behavior).
+- `move_column`
+  - required: `type`, `columnId`, `toIndex`
+
+Server-side safety rules for operation application:
+- apply operations sequentially in listed order within a single transaction.
+- if any operation fails validation or refers to missing ids, reject entire operation batch (no partial writes).
+- normalize indices to valid bounds (`<0` -> `0`, `>len` -> append).
+- after apply, run board integrity validation:
+  - every `cardId` in columns exists in `cards`,
+  - every card appears in exactly one column,
+  - no duplicate column ids or card ids.
+- persist resulting full board via existing board repository write path.
+
+#### Endpoint response contract (`POST /api/ai/chat`)
+
+Success:
+```json
+{
+  "assistantMessage": "I moved the onboarding card to In Progress.",
+  "appliedOperations": true,
+  "board": {
+    "columns": [],
+    "cards": {}
+  }
+}
+```
+
+Response validation rules:
+- `assistantMessage`: required string.
+- `appliedOperations`: required boolean (`true` only when at least one valid operation was applied).
+- `board`: required full canonical board payload after any applied operations.
+
+Error mapping:
+- `401`: unauthenticated.
+- `400`: invalid request body from client.
+- `502`: upstream AI/schema contract failure (including malformed structured output).
+- `504`: AI timeout.
+- `500`: server config/runtime error (e.g., missing API key).
+
+Sign-off needed before coding:
+- [x] Approve `POST /api/ai/chat` request/response contract above.
+- [x] Approve operation-based board mutation model (no full-board replacement from AI).
+- [x] Approve in-memory conversation history + last-`N` truncation.
+
 ### Deliverables checklist
-- [ ] Propose exact Structured Outputs schema and get sign-off first.
-- [ ] Extend AI request payload to include:
+- [x] Propose exact Structured Outputs schema and get sign-off first.
+- [x] Extend AI request payload to include:
   - current board JSON,
   - user message,
   - conversation history.
-- [ ] Parse validated structured response containing:
+- [x] Parse validated structured response containing:
   - assistant reply text,
   - optional board update payload.
-- [ ] Safely apply board update payload when present.
-- [ ] Persist resulting board changes.
+- [x] Safely apply board update payload when present.
+- [x] Persist resulting board changes.
 
 ### Tests
-- [ ] Contract tests validating schema parsing and rejection of malformed output.
-- [ ] Backend tests for "reply only" vs "reply + board update" paths.
-- [ ] Tests for conversation history handling and token-safe truncation strategy (if needed).
+- [x] Contract tests validating schema parsing and rejection of malformed output.
+- [x] Backend tests for "reply only" vs "reply + board update" paths.
+- [x] Tests for conversation history handling and token-safe truncation strategy (if needed).
 
 ### Success criteria
-- [ ] AI response contract is explicit, validated, and stable.
-- [ ] Optional board updates are applied deterministically and persisted.
-- [ ] User approval received before Part 10.
+- [x] AI response contract is explicit, validated, and stable.
+- [x] Optional board updates are applied deterministically and persisted.
+- [x] User approval received before Part 10.
 
 ---
 
 ## Part 10: Sidebar AI Chat UX + Live Board Refresh
 
 ### Deliverables checklist
-- [ ] Add sidebar chat UI integrated into the board page.
-- [ ] Render conversation history and pending/error states.
-- [ ] Send chat messages to backend AI endpoint using structured contract.
-- [ ] Apply backend-returned board updates to UI automatically.
-- [ ] Keep styling aligned with project color system and current visual language.
+- [x] Add sidebar chat UI integrated into the board page.
+- [x] Render conversation history and pending/error states.
+- [x] Send chat messages to backend AI endpoint using structured contract.
+- [x] Apply backend-returned board updates to UI automatically.
+- [x] Keep styling aligned with project color system and current visual language.
 
 ### Tests
-- [ ] Frontend component tests for chat input, message list, loading/error states.
-- [ ] Integration tests ensuring AI response updates chat transcript and board state.
-- [ ] Playwright e2e for full flow: login -> ask AI -> board updates -> refresh persists.
+- [x] Frontend component tests for chat input, message list, loading/error states.
+- [x] Integration tests ensuring AI response updates chat transcript and board state.
+- [x] Playwright e2e for full flow: login -> ask AI -> board updates -> refresh persists.
 
 ### Success criteria
-- [ ] Chat feels integrated and responsive within Kanban layout.
-- [ ] Board refresh/update behavior is automatic when AI returns changes.
-- [ ] End-to-end tests prove the full MVP journey works reliably.
+- [x] Chat feels integrated and responsive within Kanban layout.
+- [x] Board refresh/update behavior is automatic when AI returns changes.
+- [x] End-to-end tests prove the full MVP journey works reliably.
+- [x] User approval received for Part 10.
 
 ---
 
