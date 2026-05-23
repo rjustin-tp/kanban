@@ -5,7 +5,7 @@ This document explains the existing frontend in `frontend/` so future work can s
 ## What this frontend is today
 
 - Next.js app-router project that renders the Kanban experience behind a login gate.
-- Uses local in-memory state only (no backend persistence yet).
+- Uses backend persistence through `/api/board` for board load/save.
 - Supports:
   - MVP sign-in (`user` / `password`) and logout,
   - editable column titles,
@@ -34,7 +34,7 @@ This document explains the existing frontend in `frontend/` so future work can s
 - `AuthGate` checks `/api/auth/session` on load.
 - Login submits credentials to `/api/auth/login` and enters board view on success.
 - Logout calls `/api/auth/logout` and returns to login view.
-- `KanbanBoard` owns board state and passes callbacks down.
+- `KanbanBoard` loads board state from `GET /api/board` and saves updates with `PUT /api/board`.
 - Column rename updates `columns[].title`.
 - Add card:
   - generates id via `createId`,
@@ -46,6 +46,9 @@ This document explains the existing frontend in `frontend/` so future work can s
 - Drag/drop:
   - `@dnd-kit` events route through `moveCard`,
   - `moveCard` handles reorder-in-column and move-to-other-column behavior.
+- API status UX:
+  - load state message while board fetch is in-flight,
+  - inline error messaging when load/save fails.
 
 ## Styling and design tokens
 
@@ -67,10 +70,10 @@ This document explains the existing frontend in `frontend/` so future work can s
   - Existing tests:
     - `src/lib/kanban.test.ts` (board move logic),
     - `src/components/AuthGate.test.tsx` (login validation and auth transitions),
-    - `src/components/KanbanBoard.test.tsx` (render, rename, add/remove).
+    - `src/components/KanbanBoard.test.tsx` (API load, rename persistence, add/remove, error states).
 - End-to-end:
   - Playwright config in `playwright.config.ts`.
-  - Existing spec: `tests/kanban.spec.ts` (login, board interactions, logout).
+  - Existing spec: `tests/kanban.spec.ts` (login, board interactions, logout, persistence across reload).
 
 ## Commands
 

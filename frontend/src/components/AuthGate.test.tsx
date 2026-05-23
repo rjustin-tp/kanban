@@ -43,11 +43,45 @@ describe("AuthGate", () => {
   });
 
   it("transitions from login to board and back on logout", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(makeJsonResponse(401, { detail: "Not authenticated" }))
-      .mockResolvedValueOnce(makeJsonResponse(200, { ok: true, user: "user" }))
-      .mockResolvedValueOnce(makeJsonResponse(200, { ok: true }));
+    const boardPayload = {
+      columns: [
+        { id: "col-backlog", title: "Backlog", cardIds: ["card-1"] },
+        { id: "col-discovery", title: "Discovery", cardIds: [] },
+        { id: "col-progress", title: "In Progress", cardIds: [] },
+        { id: "col-review", title: "Review", cardIds: [] },
+        { id: "col-done", title: "Done", cardIds: [] },
+      ],
+      cards: {
+        "card-1": { id: "card-1", title: "Task", details: "Details" },
+      },
+    };
+
+    let authenticated = false;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url === "/api/auth/session" && method === "GET") {
+        if (authenticated) {
+          return Promise.resolve(makeJsonResponse(200, { authenticated: true, user: "user" }));
+        }
+        return Promise.resolve(
+          makeJsonResponse(401, { detail: "Not authenticated" })
+        );
+      }
+      if (url === "/api/auth/login" && method === "POST") {
+        authenticated = true;
+        return Promise.resolve(makeJsonResponse(200, { ok: true, user: "user" }));
+      }
+      if (url === "/api/board" && method === "GET") {
+        return Promise.resolve(makeJsonResponse(200, boardPayload));
+      }
+      if (url === "/api/auth/logout" && method === "POST") {
+        authenticated = false;
+        return Promise.resolve(makeJsonResponse(200, { ok: true }));
+      }
+      return Promise.resolve(makeJsonResponse(404, { detail: "Not found" }));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<AuthGate />);

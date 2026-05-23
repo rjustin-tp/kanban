@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -18,6 +18,8 @@ import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
 export const KanbanBoard = () => {
   const [board, setBoard] = useState<BoardData>(() => initialData);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [isLoadingBoard, setIsLoadingBoard] = useState(true);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -26,6 +28,43 @@ export const KanbanBoard = () => {
   );
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+
+  const persistBoard = async (nextBoard: BoardData) => {
+    try {
+      const response = await fetch("/api/board", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(nextBoard),
+      });
+      if (!response.ok) {
+        throw new Error("Save failed");
+      }
+      setSyncError(null);
+    } catch {
+      setSyncError("Could not save board changes. Try again.");
+    }
+  };
+
+  useEffect(() => {
+    const loadBoard = async () => {
+      try {
+        const response = await fetch("/api/board", { credentials: "include" });
+        if (!response.ok) {
+          throw new Error("Load failed");
+        }
+        const loadedBoard = (await response.json()) as BoardData;
+        setBoard(loadedBoard);
+        setSyncError(null);
+      } catch {
+        setSyncError("Could not load saved board data.");
+      } finally {
+        setIsLoadingBoard(false);
+      }
+    };
+
+    void loadBoard();
+  }, []);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
@@ -39,40 +78,52 @@ export const KanbanBoard = () => {
       return;
     }
 
-    setBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
+    setBoard((prev) => {
+      const next = {
+        ...prev,
+        columns: moveCard(prev.columns, active.id as string, over.id as string),
+      };
+      void persistBoard(next);
+      return next;
+    });
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    }));
+    setBoard((prev) => {
+      const next = {
+        ...prev,
+        columns: prev.columns.map((column) =>
+          column.id === columnId ? { ...column, title } : column
+        ),
+      };
+      void persistBoard(next);
+      return next;
+    });
   };
 
   const handleAddCard = (columnId: string, title: string, details: string) => {
     const id = createId("card");
-    setBoard((prev) => ({
-      ...prev,
-      cards: {
-        ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: prev.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
-      ),
-    }));
+    setBoard((prev) => {
+      const next = {
+        ...prev,
+        cards: {
+          ...prev.cards,
+          [id]: { id, title, details: details || "No details yet." },
+        },
+        columns: prev.columns.map((column) =>
+          column.id === columnId
+            ? { ...column, cardIds: [...column.cardIds, id] }
+            : column
+        ),
+      };
+      void persistBoard(next);
+      return next;
+    });
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
     setBoard((prev) => {
-      return {
+      const next = {
         ...prev,
         cards: Object.fromEntries(
           Object.entries(prev.cards).filter(([id]) => id !== cardId)
@@ -86,6 +137,8 @@ export const KanbanBoard = () => {
             : column
         ),
       };
+      void persistBoard(next);
+      return next;
     });
   };
 
@@ -131,6 +184,14 @@ export const KanbanBoard = () => {
               </div>
             ))}
           </div>
+          {isLoadingBoard ? (
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--gray-text)]">
+              Loading saved board...
+            </p>
+          ) : null}
+          {syncError ? (
+            <p className="text-sm font-medium text-[var(--secondary-purple)]">{syncError}</p>
+          ) : null}
         </header>
 
         <DndContext

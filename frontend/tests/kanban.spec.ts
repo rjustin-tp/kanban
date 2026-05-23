@@ -2,6 +2,57 @@ import { expect, test, type Page } from "@playwright/test";
 
 const setupAuthMocks = async (page: Page) => {
   let authenticated = false;
+  let boardState = {
+    columns: [
+      { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },
+      { id: "col-discovery", title: "Discovery", cardIds: ["card-3"] },
+      { id: "col-progress", title: "In Progress", cardIds: ["card-4", "card-5"] },
+      { id: "col-review", title: "Review", cardIds: ["card-6"] },
+      { id: "col-done", title: "Done", cardIds: ["card-7", "card-8"] },
+    ],
+    cards: {
+      "card-1": {
+        id: "card-1",
+        title: "Align roadmap themes",
+        details: "Draft quarterly themes with impact statements and metrics.",
+      },
+      "card-2": {
+        id: "card-2",
+        title: "Gather customer signals",
+        details: "Review support tags, sales notes, and churn feedback.",
+      },
+      "card-3": {
+        id: "card-3",
+        title: "Prototype analytics view",
+        details: "Sketch initial dashboard layout and key drill-downs.",
+      },
+      "card-4": {
+        id: "card-4",
+        title: "Refine status language",
+        details: "Standardize column labels and tone across the board.",
+      },
+      "card-5": {
+        id: "card-5",
+        title: "Design card layout",
+        details: "Add hierarchy and spacing for scanning dense lists.",
+      },
+      "card-6": {
+        id: "card-6",
+        title: "QA micro-interactions",
+        details: "Verify hover, focus, and loading states.",
+      },
+      "card-7": {
+        id: "card-7",
+        title: "Ship marketing page",
+        details: "Final copy approved and asset pack delivered.",
+      },
+      "card-8": {
+        id: "card-8",
+        title: "Close onboarding sprint",
+        details: "Document release notes and share internally.",
+      },
+    },
+  };
 
   await page.route("**/api/auth/session", async (route) => {
     if (authenticated) {
@@ -48,6 +99,43 @@ const setupAuthMocks = async (page: Page) => {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ ok: true }),
+    });
+  });
+
+  await page.route("**/api/board", async (route) => {
+    if (!authenticated) {
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Not authenticated" }),
+      });
+      return;
+    }
+
+    const method = route.request().method();
+    if (method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(boardState),
+      });
+      return;
+    }
+
+    if (method === "PUT") {
+      boardState = route.request().postDataJSON() as typeof boardState;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(boardState),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 405,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "Method not allowed" }),
     });
   });
 };
@@ -108,4 +196,28 @@ test("logs out and returns to login screen", async ({ page }) => {
   await login(page);
   await page.getByRole("button", { name: /log out/i }).click();
   await expect(page.getByRole("heading", { name: /sign in/i })).toBeVisible();
+});
+
+test("keeps renamed column after reload", async ({ page }) => {
+  await setupAuthMocks(page);
+  await login(page);
+
+  const firstColumn = page.locator('[data-testid^="column-"]').first();
+  const titleInput = firstColumn.getByLabel("Column title");
+  await titleInput.clear();
+
+  const persistRequest = page.waitForRequest(
+    (request) =>
+      request.url().includes("/api/board") &&
+      request.method() === "PUT" &&
+      request.postData()?.includes('"title":"Queue"') === true
+  );
+  await titleInput.type("Queue");
+  await persistRequest;
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();
+  await expect(page.getByTestId("column-col-backlog").getByLabel("Column title")).toHaveValue(
+    "Queue"
+  );
 });

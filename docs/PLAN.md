@@ -95,69 +95,69 @@ Fixed decisions for this project:
 - [x] Unauthenticated users cannot access board view.
 - [x] Valid credentials grant access; invalid credentials do not.
 - [x] Logout reliably clears session and blocks board access again.
-- [ ] User approval received before Part 5.
+- [x] User approval received before Part 5.
 
 ---
 
 ## Part 5: Database Modeling Proposal + Sign-Off
 
 ### Deliverables checklist
-- [ ] Propose SQLite schema for users, board, columns, cards, and optional chat/session entities.
-- [ ] Provide a JSON representation of persisted Kanban shape for app I/O.
-- [ ] Document schema decisions and migration approach in `docs/`.
-- [ ] Include rationale for future multi-user support while keeping MVP simple.
-- [ ] Present schema for user sign-off before implementing persistence APIs.
+- [x] Propose SQLite schema for users, board, columns, cards, and optional chat/session entities.
+- [x] Provide a JSON representation of persisted Kanban shape for app I/O.
+- [x] Document schema decisions and migration approach in `docs/`.
+- [x] Include rationale for future multi-user support while keeping MVP simple.
+- [x] Present schema for user sign-off before implementing persistence APIs.
 
 ### Tests
 - [ ] Validation test(s) for JSON shape (if schema validator introduced).
-- [ ] Documentation review checklist: consistency between SQL schema and JSON schema.
+- [x] Documentation review checklist: consistency between SQL schema and JSON schema.
 
 ### Success criteria
-- [ ] Approved schema is unambiguous and implementation-ready.
-- [ ] Data model supports one board per user now and multiple users later.
-- [ ] User sign-off explicitly received before Part 6.
+- [x] Approved schema is unambiguous and implementation-ready.
+- [x] Data model supports one board per user now and multiple users later.
+- [x] User sign-off explicitly received before Part 6.
 
 ---
 
 ## Part 6: Backend Kanban API + Persistence
 
 ### Deliverables checklist
-- [ ] Implement DB initialization (create DB/tables if missing).
-- [ ] Add backend repository/service layer for board CRUD operations.
-- [ ] Add API routes for reading/updating Kanban data for authenticated user.
-- [ ] Ensure updates are transactional and preserve ordering semantics.
-- [ ] Seed initial board for first-time user if no saved data exists.
+- [x] Implement DB initialization (create DB/tables if missing).
+- [x] Add backend repository/service layer for board CRUD operations.
+- [x] Add API routes for reading/updating Kanban data for authenticated user.
+- [x] Ensure updates are transactional and preserve ordering semantics.
+- [x] Seed initial board for first-time user if no saved data exists.
 
 ### Tests
-- [ ] Backend unit tests for repository/service methods.
-- [ ] Backend API tests for all routes with auth and error cases.
-- [ ] Persistence tests proving writes survive process restarts.
+- [x] Backend unit tests for repository/service methods.
+- [x] Backend API tests for all routes with auth and error cases.
+- [x] Persistence tests proving writes survive process restarts.
 
 ### Success criteria
-- [ ] API can fetch and update user board state reliably.
-- [ ] DB auto-creates on first run without manual setup.
-- [ ] Test suite covers happy path + key failure path behavior.
-- [ ] User approval received before Part 7.
+- [x] API can fetch and update user board state reliably.
+- [x] DB auto-creates on first run without manual setup.
+- [x] Test suite covers happy path + key failure path behavior.
+- [x] User approval received before Part 7.
 
 ---
 
 ## Part 7: Frontend + Backend Integration
 
 ### Deliverables checklist
-- [ ] Replace frontend in-memory board state bootstrap with backend fetch.
-- [ ] Persist board changes (rename/move/add/delete) through backend API.
-- [ ] Add loading and error states for API interactions.
-- [ ] Keep UI behavior and style consistent with existing experience.
+- [x] Replace frontend in-memory board state bootstrap with backend fetch.
+- [x] Persist board changes (rename/move/add/delete) through backend API.
+- [x] Add loading and error states for API interactions.
+- [x] Keep UI behavior and style consistent with existing experience.
 
 ### Tests
-- [ ] Frontend tests for API-backed state initialization and mutations.
-- [ ] Mocked integration tests for error handling and retry behavior (if added).
-- [ ] Playwright e2e for persistence across page reload.
+- [x] Frontend tests for API-backed state initialization and mutations.
+- [x] Mocked integration tests for error handling and retry behavior (if added).
+- [x] Playwright e2e for persistence across page reload.
 
 ### Success criteria
-- [ ] User interactions modify persisted board, not local-only memory.
-- [ ] Reload shows latest saved board state.
-- [ ] No regression in core board UX.
+- [x] User interactions modify persisted board, not local-only memory.
+- [x] Reload shows latest saved board state.
+- [x] No regression in core board UX.
 - [ ] User approval received before Part 8.
 
 ---
