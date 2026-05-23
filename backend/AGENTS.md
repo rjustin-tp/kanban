@@ -2,18 +2,23 @@
 
 This backend is a FastAPI service for the Project Management MVP.
 
-## Current scope (Part 2 scaffold)
+## Current scope (Part 4 auth-gated board)
 
-- Serves a static hello world page at `/`.
+- Builds frontend static export during Docker build and serves it at `/`.
 - Exposes a health API at `/api/health`.
-- Includes pytest coverage for the scaffold endpoints.
+- Implements MVP session auth endpoints:
+  - `POST /api/auth/login`
+  - `GET /api/auth/session`
+  - `POST /api/auth/logout`
+- Includes pytest coverage for backend endpoint behavior.
 - Is containerized with Docker and started through scripts in `scripts/`.
 
 ## Backend layout
 
 - `backend/app/main.py`: FastAPI app setup and routes.
-- `backend/app/static/index.html`: static hello world page with client-side health call.
-- `backend/tests/test_main.py`: scaffold endpoint tests.
+- `backend/app/static/`: fallback static content for local backend runs (Docker replaces with frontend export).
+- `backend/tests/test_main.py`: backend endpoint tests.
+- `backend/tests/test_auth.py`: auth endpoint tests for login/session/logout behavior.
 - `backend/pyproject.toml`: Python project metadata and dependencies.
 
 ## Expected runtime
@@ -24,4 +29,4 @@ This backend is a FastAPI service for the Project Management MVP.
 
 ## Test command
 
-- From `backend/`: `uv run --project . --extra dev pytest`
+- From `backend/`: `uv run --project . --extra dev python -m pytest`

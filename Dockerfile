@@ -1,3 +1,13 @@
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +22,7 @@ COPY backend/pyproject.toml /app/backend/pyproject.toml
 RUN uv sync --project /app/backend --no-dev
 
 COPY backend /app/backend
+COPY --from=frontend-builder /app/frontend/out /app/backend/app/static
 
 WORKDIR /app/backend
 

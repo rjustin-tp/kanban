@@ -60,19 +60,19 @@ Fixed decisions for this project:
 ## Part 3: Integrate Existing Frontend Build
 
 ### Deliverables checklist
-- [ ] Configure frontend production build and static export path for backend serving.
-- [ ] Wire backend static serving so `/` renders current Kanban UI instead of hello world.
-- [ ] Preserve asset paths and routing needed by the MVP.
-- [ ] Keep backend API endpoint(s) accessible in same runtime.
+- [x] Configure frontend production build and static export path for backend serving.
+- [x] Wire backend static serving so `/` renders current Kanban UI instead of hello world.
+- [x] Preserve asset paths and routing needed by the MVP.
+- [x] Keep backend API endpoint(s) accessible in same runtime.
 
 ### Tests
-- [ ] Frontend unit tests (`npm run test:unit`) pass.
-- [ ] Frontend e2e tests (`npm run test:e2e`) pass in local environment.
-- [ ] Integration smoke test in container: board renders at `/`, health API still works.
+- [x] Frontend unit tests (`npm run test:unit`) pass.
+- [x] Frontend e2e tests (`npm run test:e2e`) pass in local environment.
+- [x] Integration smoke test in container: board renders at `/`, health API still works.
 
 ### Success criteria
-- [ ] Demo Kanban board is visible at `/` from backend-served app.
-- [ ] No regression in existing drag/drop, rename, add/remove behavior.
+- [x] Demo Kanban board is visible at `/` from backend-served app.
+- [x] No regression in existing drag/drop, rename, add/remove behavior.
 - [ ] User approval received before Part 4.
 
 ---
@@ -80,21 +80,21 @@ Fixed decisions for this project:
 ## Part 4: Fake Sign-In Experience (MVP Auth)
 
 ### Deliverables checklist
-- [ ] Add login page/flow that gates access to board.
-- [ ] Accept only `user` / `password` in MVP.
-- [ ] Implement simple server-side session/cookie auth.
-- [ ] Add logout action that clears session and returns user to login.
-- [ ] Protect board route(s) and API route(s) as needed for authenticated user.
+- [x] Add login page/flow that gates access to board.
+- [x] Accept only `user` / `password` in MVP.
+- [x] Implement simple server-side session/cookie auth.
+- [x] Add logout action that clears session and returns user to login.
+- [x] Protect board route(s) and API route(s) as needed for authenticated user.
 
 ### Tests
-- [ ] Backend auth tests: login success/failure, session creation, logout, protected route access.
-- [ ] Frontend unit/integration tests for login form validation and auth state transitions.
-- [ ] Playwright e2e for login -> board -> logout flow.
+- [x] Backend auth tests: login success/failure, session creation, logout, protected route access.
+- [x] Frontend unit/integration tests for login form validation and auth state transitions.
+- [x] Playwright e2e for login -> board -> logout flow.
 
 ### Success criteria
-- [ ] Unauthenticated users cannot access board view.
-- [ ] Valid credentials grant access; invalid credentials do not.
-- [ ] Logout reliably clears session and blocks board access again.
+- [x] Unauthenticated users cannot access board view.
+- [x] Valid credentials grant access; invalid credentials do not.
+- [x] Logout reliably clears session and blocks board access again.
 - [ ] User approval received before Part 5.
 
 ---

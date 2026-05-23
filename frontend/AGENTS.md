@@ -4,9 +4,10 @@ This document explains the existing frontend in `frontend/` so future work can s
 
 ## What this frontend is today
 
-- Next.js app-router project that currently renders a single-page Kanban experience.
+- Next.js app-router project that renders the Kanban experience behind a login gate.
 - Uses local in-memory state only (no backend persistence yet).
 - Supports:
+  - MVP sign-in (`user` / `password`) and logout,
   - editable column titles,
   - add/remove cards,
   - drag-and-drop card movement across columns.
@@ -14,9 +15,11 @@ This document explains the existing frontend in `frontend/` so future work can s
 ## Core architecture
 
 - App entry:
-  - `src/app/page.tsx`: renders `KanbanBoard`.
+  - `src/app/page.tsx`: renders `AuthGate`.
   - `src/app/layout.tsx`: app metadata and global fonts.
   - `src/app/globals.css`: design tokens and global styling.
+- Auth/UI gate:
+  - `src/components/AuthGate.tsx`: checks session, renders login form, and toggles board/login state.
 - Domain model and board logic:
   - `src/lib/kanban.ts`: `Card`, `Column`, `BoardData`, `initialData`, `moveCard`, `createId`.
 - UI components:
@@ -28,6 +31,9 @@ This document explains the existing frontend in `frontend/` so future work can s
 
 ## State and interaction flow
 
+- `AuthGate` checks `/api/auth/session` on load.
+- Login submits credentials to `/api/auth/login` and enters board view on success.
+- Logout calls `/api/auth/logout` and returns to login view.
 - `KanbanBoard` owns board state and passes callbacks down.
 - Column rename updates `columns[].title`.
 - Add card:
@@ -60,10 +66,11 @@ This document explains the existing frontend in `frontend/` so future work can s
   - Test setup: `src/test/setup.ts`.
   - Existing tests:
     - `src/lib/kanban.test.ts` (board move logic),
+    - `src/components/AuthGate.test.tsx` (login validation and auth transitions),
     - `src/components/KanbanBoard.test.tsx` (render, rename, add/remove).
 - End-to-end:
   - Playwright config in `playwright.config.ts`.
-  - Existing spec: `tests/kanban.spec.ts` (load board, add card, drag card).
+  - Existing spec: `tests/kanban.spec.ts` (login, board interactions, logout).
 
 ## Commands
 

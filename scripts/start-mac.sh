@@ -9,7 +9,7 @@ CONTAINER_NAME="pm-mvp-app"
 echo "Building Docker image..."
 docker build -t "${IMAGE_NAME}" "${ROOT_DIR}"
 
-if docker ps -a --format '{{.Names}}' | rg -x "${CONTAINER_NAME}" >/dev/null; then
+if docker ps -a --format '{{.Names}}' | awk -v name="${CONTAINER_NAME}" '$0 == name { found = 1 } END { exit !found }'; then
   echo "Removing existing container..."
   docker rm -f "${CONTAINER_NAME}" >/dev/null
 fi
