@@ -463,6 +463,79 @@ def test_ai_chat_accepts_action_style_move_operations(tmp_path) -> None:
         main_module.chat_histories.clear()
 
 
+def test_ai_chat_summary_keyword_requires_word_boundary(tmp_path) -> None:
+    original_client = main_module.ai_client
+    original_repo = main_module.board_repo
+
+    class StubClient:
+        def __init__(self) -> None:
+            self.called = False
+
+        def prompt_structured_chat(
+            self, _board: dict, _user_message: str, _conversation: list[dict[str, str]]
+        ) -> dict:
+            self.called = True
+            return {"assistantMessage": "Not a summary path."}
+
+    stub = StubClient()
+    main_module.ai_client = stub
+    main_module.board_repo = BoardRepository(tmp_path / "kanban.db")
+    main_module.board_repo.initialize()
+    main_module.sessions.clear()
+    main_module.chat_histories.clear()
+    try:
+        with TestClient(main_module.app) as client:
+            _login(client)
+            response = client.post(
+                "/api/ai/chat",
+                json={"message": "Move the analysummary-card to Done"},
+            )
+            assert response.status_code == 200
+            assert stub.called is True
+            assert response.json()["assistantMessage"] == "Not a summary path."
+    finally:
+        main_module.ai_client = original_client
+        main_module.board_repo = original_repo
+        main_module.sessions.clear()
+        main_module.chat_histories.clear()
+
+
+def test_ai_chat_rejects_oversized_deletion_batch(tmp_path) -> None:
+    original_client = main_module.ai_client
+    original_repo = main_module.board_repo
+
+    class StubClient:
+        def prompt_structured_chat(
+            self, _board: dict, _user_message: str, _conversation: list[dict[str, str]]
+        ) -> dict:
+            return {
+                "assistantMessage": "Cleaning up.",
+                "operations": [
+                    {"type": "delete_card", "cardId": f"card-{i}"} for i in range(1, 9)
+                ],
+            }
+
+    main_module.ai_client = StubClient()
+    main_module.board_repo = BoardRepository(tmp_path / "kanban.db")
+    main_module.board_repo.initialize()
+    main_module.sessions.clear()
+    main_module.chat_histories.clear()
+    try:
+        with TestClient(main_module.app) as client:
+            _login(client)
+            before_board = client.get("/api/board").json()
+            response = client.post("/api/ai/chat", json={"message": "Wipe most cards"})
+            assert response.status_code == 400
+            assert "too many deletions" in response.json()["detail"]
+            after_board = client.get("/api/board").json()
+            assert after_board == before_board
+    finally:
+        main_module.ai_client = original_client
+        main_module.board_repo = original_repo
+        main_module.sessions.clear()
+        main_module.chat_histories.clear()
+
+
 def test_ai_chat_retries_once_for_invalid_structured_response(tmp_path) -> None:
     original_client = main_module.ai_client
     original_repo = main_module.board_repo

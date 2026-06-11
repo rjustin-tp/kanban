@@ -148,6 +148,50 @@ describe("KanbanBoard", () => {
     ).toBeInTheDocument();
   });
 
+  it("debounces column rename into a single save", async () => {
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+    const column = getFirstColumn();
+    const input = within(column).getByLabelText("Column title");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Queue");
+
+    await waitFor(() => {
+      const puts = fetchMock.mock.calls.filter(
+        ([url, init]) => url === "/api/board" && init?.method === "PUT"
+      );
+      const finalPut = puts[puts.length - 1];
+      expect(finalPut).toBeDefined();
+      const payload = JSON.parse((finalPut![1]?.body as string) ?? "{}");
+      expect(payload.columns[0].title).toBe("Queue");
+    });
+
+    const puts = fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/board" && init?.method === "PUT"
+    );
+    expect(puts.length).toBe(1);
+  });
+
+  it("does not send conversation field in chat requests", async () => {
+    render(<KanbanBoard />);
+    await screen.findByDisplayValue("Loaded Backlog");
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/ask ai to update your board/i),
+      "Hello"
+    );
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    await waitFor(() => {
+      const chatCall = fetchMock.mock.calls.find(
+        ([url, init]) => url === "/api/ai/chat" && init?.method === "POST"
+      );
+      expect(chatCall).toBeDefined();
+      const payload = JSON.parse((chatCall![1]?.body as string) ?? "{}");
+      expect(payload).toEqual({ message: "Hello" });
+    });
+  });
+
   it("sends chat message and renders assistant reply", async () => {
     render(<KanbanBoard />);
     await screen.findByDisplayValue("Loaded Backlog");

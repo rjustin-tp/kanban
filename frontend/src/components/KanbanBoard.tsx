@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -37,6 +37,15 @@ export const KanbanBoard = () => {
   );
 
   const cardsById = useMemo(() => board.cards, [board.cards]);
+  const renameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (renameDebounceRef.current) {
+        clearTimeout(renameDebounceRef.current);
+      }
+    };
+  }, []);
 
   const persistBoard = async (nextBoard: BoardData) => {
     try {
@@ -105,7 +114,13 @@ export const KanbanBoard = () => {
           column.id === columnId ? { ...column, title } : column
         ),
       };
-      void persistBoard(next);
+      if (renameDebounceRef.current) {
+        clearTimeout(renameDebounceRef.current);
+      }
+      renameDebounceRef.current = setTimeout(() => {
+        renameDebounceRef.current = null;
+        void persistBoard(next);
+      }, 400);
       return next;
     });
   };
@@ -157,7 +172,6 @@ export const KanbanBoard = () => {
       return;
     }
 
-    const priorConversation = chatMessages;
     setChatInput("");
     setChatError(null);
     setChatMessages((prev) => [...prev, { role: "user", content: message }]);
@@ -168,10 +182,7 @@ export const KanbanBoard = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          message,
-          conversation: priorConversation,
-        }),
+        body: JSON.stringify({ message }),
       });
       if (!response.ok) {
         throw new Error("Chat failed");

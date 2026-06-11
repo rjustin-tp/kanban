@@ -129,22 +129,9 @@ This keeps behavior deterministic and easy to test.
 
 ## Migration Approach
 
-- Use plain SQL migration files in `backend/migrations/`.
-- Start with `0001_init.sql` containing the core tables (`users`, `boards`, `columns`, `cards`).
-- Optional tables (`chat_messages`, `auth_sessions`) can be added in later migrations if needed.
-- Store applied migration versions in a simple `schema_migrations` table:
+For MVP the schema is bootstrapped in code via `CREATE TABLE IF NOT EXISTS` inside `BoardRepository.initialize()` (see `backend/app/board_repository.py`). There is no migration runner and no `schema_migrations` table; any future schema change requires either an explicit `ALTER TABLE` step added to `initialize()` or wiping the local DB file.
 
-```sql
-CREATE TABLE schema_migrations (
-  version TEXT PRIMARY KEY,
-  applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-- On backend startup:
-  - create DB file if missing,
-  - create `schema_migrations` if missing,
-  - apply unapplied migrations in order.
+If/when persistence becomes load-bearing, the recommended evolution is plain SQL files under `backend/migrations/` (e.g. `0001_init.sql`, `0002_add_chat.sql`) plus a `schema_migrations(version TEXT PRIMARY KEY, applied_at TEXT)` table that records applied versions. Not implemented today.
 
 ## Seed Strategy
 

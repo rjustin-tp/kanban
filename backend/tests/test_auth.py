@@ -1,6 +1,7 @@
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app, sessions
+from app.main import SESSION_COOKIE_NAME, app, sessions
 
 client = TestClient(app)
 
@@ -30,6 +31,32 @@ def test_login_creates_session_and_allows_session_check() -> None:
     session_check = client.get("/api/auth/session")
     assert session_check.status_code == 200
     assert session_check.json() == {"authenticated": True, "user": "user"}
+
+
+def test_login_cookie_is_secure_when_env_flag_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    sessions.clear()
+    monkeypatch.setenv("PM_COOKIE_SECURE", "1")
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "user", "password": "password"},
+    )
+
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "Secure" in set_cookie
+    assert f"{SESSION_COOKIE_NAME}=" in set_cookie
+
+
+def test_login_cookie_is_not_secure_by_default() -> None:
+    sessions.clear()
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "user", "password": "password"},
+    )
+
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "Secure" not in set_cookie
 
 
 def test_logout_clears_session_and_blocks_protected_route() -> None:

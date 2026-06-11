@@ -111,6 +111,34 @@ def test_prompt_structured_chat_raises_for_non_json_content(monkeypatch: pytest.
         )
 
 
+def test_prompt_text_raises_when_choices_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": []})
+
+    client = OpenRouterClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(OpenRouterRequestError, match="no choices"):
+        client.prompt_text("2+2")
+
+
+def test_prompt_structured_chat_raises_when_choices_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": []})
+
+    client = OpenRouterClient(transport=httpx.MockTransport(handler))
+    with pytest.raises(OpenRouterRequestError, match="no choices"):
+        client.prompt_structured_chat(
+            board={"columns": [], "cards": {}},
+            user_message="Hello",
+            conversation=[],
+        )
+
+
 def test_prompt_text_reads_api_key_from_project_env_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

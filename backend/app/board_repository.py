@@ -4,6 +4,47 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+
+def validate_board_payload(board_data: dict[str, Any]) -> None:
+    columns = board_data.get("columns")
+    cards = board_data.get("cards")
+    if not isinstance(columns, list) or not isinstance(cards, dict):
+        raise ValueError("Board payload must include columns and cards.")
+
+    column_ids: set[str] = set()
+    seen_card_ids: set[str] = set()
+    for column in columns:
+        column_id = column.get("id")
+        if not isinstance(column_id, str) or not column_id:
+            raise ValueError("Each column must have a non-empty id.")
+        if column_id in column_ids:
+            raise ValueError("Column ids must be unique.")
+        column_ids.add(column_id)
+
+        card_ids = column.get("cardIds")
+        if not isinstance(card_ids, list):
+            raise ValueError("Each column must have cardIds.")
+
+        for card_id in card_ids:
+            if not isinstance(card_id, str) or not card_id:
+                raise ValueError("Card ids must be non-empty strings.")
+            if card_id in seen_card_ids:
+                raise ValueError("A card cannot appear in multiple positions.")
+            seen_card_ids.add(card_id)
+            if card_id not in cards:
+                raise ValueError("All card ids must exist in cards map.")
+
+    if set(cards.keys()) != seen_card_ids:
+        raise ValueError("Cards map must match card ids used by columns.")
+
+    for key, card in cards.items():
+        if card.get("id") != key:
+            raise ValueError("Card key and card.id must match.")
+        if not card.get("title"):
+            raise ValueError("Cards must include title.")
+        if "details" not in card:
+            raise ValueError("Cards must include details.")
+
 DEFAULT_BOARD = {
     "columns": [
         {"id": "col-backlog", "title": "Backlog", "cardIds": ["card-1", "card-2"]},
@@ -127,48 +168,11 @@ class BoardRepository:
             return self._read_board(connection, board_id)
 
     def replace_board_data(self, username: str, board_data: dict[str, Any]) -> dict[str, Any]:
-        self._validate_board_data(board_data)
+        validate_board_payload(board_data)
         with self._connect() as connection:
             user_id = self._ensure_user(connection, username)
             board_id = self._ensure_board(connection, user_id)
-
-            connection.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
-            connection.execute("DELETE FROM columns WHERE board_id = ?", (board_id,))
-
-            column_key_to_id: dict[str, int] = {}
-            for column_position, column in enumerate(board_data["columns"]):
-                cursor = connection.execute(
-                    """
-                    INSERT INTO columns (board_id, column_key, title, position)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (board_id, column["id"], column["title"], column_position),
-                )
-                column_key_to_id[column["id"]] = int(cursor.lastrowid)
-
-            cards_by_id = board_data["cards"]
-            for column in board_data["columns"]:
-                column_id = column_key_to_id[column["id"]]
-                for card_position, card_id in enumerate(column["cardIds"]):
-                    card = cards_by_id[card_id]
-                    connection.execute(
-                        """
-                        INSERT INTO cards (board_id, card_key, title, details, column_id, position)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            board_id,
-                            card["id"],
-                            card["title"],
-                            card["details"],
-                            column_id,
-                            card_position,
-                        ),
-                    )
-
-            connection.execute(
-                "UPDATE boards SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (board_id,)
-            )
+            self._write_board_rows(connection, board_id, board_data)
             return self._read_board(connection, board_id)
 
     def _ensure_user(self, connection: sqlite3.Connection, username: str) -> int:
@@ -213,9 +217,9 @@ class BoardRepository:
         if row is None or int(row["total"]) > 0:
             return
 
-        self.replace_board_data_for_board_id(connection, board_id, DEFAULT_BOARD)
+        self._write_board_rows(connection, board_id, DEFAULT_BOARD)
 
-    def replace_board_data_for_board_id(
+    def _write_board_rows(
         self, connection: sqlite3.Connection, board_id: int, board_data: dict[str, Any]
     ) -> None:
         connection.execute("DELETE FROM cards WHERE board_id = ?", (board_id,))
@@ -301,43 +305,3 @@ class BoardRepository:
             )
 
         return {"columns": columns, "cards": cards_map}
-
-    def _validate_board_data(self, board_data: dict[str, Any]) -> None:
-        columns = board_data.get("columns")
-        cards = board_data.get("cards")
-        if not isinstance(columns, list) or not isinstance(cards, dict):
-            raise ValueError("Board payload must include columns and cards.")
-
-        column_ids: set[str] = set()
-        seen_card_ids: set[str] = set()
-        for column in columns:
-            column_id = column.get("id")
-            if not isinstance(column_id, str) or not column_id:
-                raise ValueError("Each column must have a non-empty id.")
-            if column_id in column_ids:
-                raise ValueError("Column ids must be unique.")
-            column_ids.add(column_id)
-
-            card_ids = column.get("cardIds")
-            if not isinstance(card_ids, list):
-                raise ValueError("Each column must have cardIds.")
-
-            for card_id in card_ids:
-                if not isinstance(card_id, str) or not card_id:
-                    raise ValueError("Card ids must be non-empty strings.")
-                if card_id in seen_card_ids:
-                    raise ValueError("A card cannot appear in multiple positions.")
-                seen_card_ids.add(card_id)
-                if card_id not in cards:
-                    raise ValueError("All card ids must exist in cards map.")
-
-        if set(cards.keys()) != seen_card_ids:
-            raise ValueError("Cards map must match card ids used by columns.")
-
-        for key, card in cards.items():
-            if card.get("id") != key:
-                raise ValueError("Card key and card.id must match.")
-            if not card.get("title"):
-                raise ValueError("Cards must include title.")
-            if "details" not in card:
-                raise ValueError("Cards must include details.")

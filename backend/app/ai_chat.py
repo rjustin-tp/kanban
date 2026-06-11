@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from app.board_repository import validate_board_payload
+
 MessageText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 AssistantText = Annotated[
     str,
@@ -131,7 +133,7 @@ def apply_operations_to_board(
     for operation in operations:
         _apply_single_operation(working_board, operation)
 
-    _validate_board_integrity(working_board)
+    validate_board_payload(working_board)
     return working_board, True
 
 
@@ -427,42 +429,3 @@ def _generate_id(prefix: str, label: str, existing_ids: set[str]) -> str:
         suffix += 1
 
 
-def _validate_board_integrity(board: dict[str, Any]) -> None:
-    columns = board.get("columns")
-    cards = board.get("cards")
-    if not isinstance(columns, list) or not isinstance(cards, dict):
-        raise ValueError("Board payload must include columns and cards.")
-
-    column_ids: set[str] = set()
-    seen_card_ids: set[str] = set()
-    for column in columns:
-        column_id = column.get("id")
-        if not isinstance(column_id, str) or not column_id:
-            raise ValueError("Each column must have a non-empty id.")
-        if column_id in column_ids:
-            raise ValueError("Column ids must be unique.")
-        column_ids.add(column_id)
-
-        card_ids = column.get("cardIds")
-        if not isinstance(card_ids, list):
-            raise ValueError("Each column must have cardIds.")
-
-        for card_id in card_ids:
-            if not isinstance(card_id, str) or not card_id:
-                raise ValueError("Card ids must be non-empty strings.")
-            if card_id in seen_card_ids:
-                raise ValueError("A card cannot appear in multiple positions.")
-            seen_card_ids.add(card_id)
-            if card_id not in cards:
-                raise ValueError("All card ids must exist in cards map.")
-
-    if set(cards.keys()) != seen_card_ids:
-        raise ValueError("Cards map must match card ids used by columns.")
-
-    for key, card in cards.items():
-        if card.get("id") != key:
-            raise ValueError("Card key and card.id must match.")
-        if not card.get("title"):
-            raise ValueError("Cards must include title.")
-        if "details" not in card:
-            raise ValueError("Cards must include details.")

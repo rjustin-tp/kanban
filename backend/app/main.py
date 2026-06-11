@@ -1,3 +1,4 @@
+import re
 import secrets
 from collections.abc import Mapping
 import os
@@ -30,7 +31,13 @@ SESSION_COOKIE_NAME = "pm_session"
 VALID_USERNAME = "user"
 VALID_PASSWORD = "password"
 CHAT_HISTORY_LIMIT = 12
-AI_PARSE_ATTEMPTS = 4
+AI_PARSE_ATTEMPTS = 2
+MAX_DELETIONS_PER_BATCH = 5
+SUMMARY_KEYWORD_PATTERN = re.compile(r"\b(summarize|summary|recap)\b")
+
+# Single-worker only: sessions and chat_histories are in-process state. Running
+# uvicorn with --workers > 1 will route requests to processes that do not share
+# these dicts and auth will fail intermittently. Move to SQLite if scaling out.
 sessions: dict[str, str] = {}
 chat_histories: dict[str, list[dict[str, str]]] = {}
 
@@ -43,8 +50,15 @@ def _resolve_db_path() -> Path:
 
 
 def _is_summary_request(message: str) -> bool:
-    normalized = message.lower()
-    return any(keyword in normalized for keyword in ("summarize", "summary", "recap"))
+    return SUMMARY_KEYWORD_PATTERN.search(message.lower()) is not None
+
+
+def _count_deletions(operations: list[Any]) -> int:
+    return sum(
+        1
+        for operation in operations
+        if getattr(operation, "type", None) in {"delete_card", "delete_column"}
+    )
 
 
 def _build_board_summary(board: dict[str, Any]) -> str:
@@ -126,6 +140,7 @@ def login(payload: LoginRequest, response: Response) -> dict[str, Any]:
         key=SESSION_COOKIE_NAME,
         value=session_id,
         httponly=True,
+        secure=os.getenv("PM_COOKIE_SECURE") == "1",
         samesite="lax",
         path="/",
     )
@@ -219,6 +234,14 @@ def post_ai_chat(request: Request, payload: ChatRequest) -> dict[str, Any]:
                 structured = StructuredAIResponse.model_validate(
                     normalize_structured_response(ai_result, board)
                 )
+                if _count_deletions(structured.operations) > MAX_DELETIONS_PER_BATCH:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "AI proposed too many deletions in one batch; "
+                            f"limit is {MAX_DELETIONS_PER_BATCH}."
+                        ),
+                    )
                 updated_board, applied_operations = apply_operations_to_board(
                     board, structured.operations
                 )
